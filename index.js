@@ -119,6 +119,13 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// ====================== HELPER: Check if user can review apps ======================
+function canReviewApps(member) {
+    return member.roles.cache.has(config.founderRoleId) ||
+           member.roles.cache.has(config.communityManagerRoleId) ||
+           member.permissions.has(PermissionFlagsBits.Administrator);
+}
+
 // ====================== MEMBER APPLICATION ======================
 async function openMemberApplicationModal(interaction) {
     const modal = new ModalBuilder()
@@ -233,7 +240,6 @@ async function handleMemberApplicationSubmit(interaction) {
 
 // ====================== HOST APPLICATION ======================
 async function openHostApplicationModal(interaction) {
-    // Check if user is verified
     const verifiedRole = interaction.guild.roles.cache.get(config.verifiedRoleId);
     if (verifiedRole && !interaction.member.roles.cache.has(verifiedRole.id)) {
         return interaction.reply({ content: 'You must be a **Verified** member before applying to become a Host.', ephemeral: true });
@@ -285,14 +291,12 @@ async function handleHostApplicationSubmit(interaction) {
 
     const user = interaction.user;
 
-    // Public status
     const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
     let statusMessage = null;
     if (statusChannel) {
         statusMessage = await statusChannel.send(`**${user.username}**'s **Host** application is being looked over`);
     }
 
-    // Staff review
     const reviewChannel = interaction.guild.channels.cache.get(config.applicationReviewId);
     if (!reviewChannel) {
         return interaction.reply({ content: 'Application review channel not set up.', ephemeral: true });
@@ -342,6 +346,11 @@ async function handleHostApplicationSubmit(interaction) {
 
 // ====================== ACCEPT / DENY ======================
 async function handleAccept(interaction) {
+    // Only Founder + Community Manager can accept
+    if (!canReviewApps(interaction.member)) {
+        return interaction.reply({ content: 'Only **Founder** and **Community Manager** can accept applications.', ephemeral: true });
+    }
+
     const parts = interaction.customId.replace('accept_app_', '').split('_');
     const userId = parts[0];
     const type = parts[1]; // member or host
@@ -358,7 +367,6 @@ async function handleAccept(interaction) {
         if (verifiedRole) await member.roles.add(verifiedRole).catch(() => {});
         if (applicantRole) await member.roles.remove(applicantRole).catch(() => {});
 
-        // Update status
         if (data?.statusMessageId && data?.statusChannelId) {
             const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
             if (statusChannel) {
@@ -374,9 +382,6 @@ async function handleAccept(interaction) {
     }
 
     if (type === 'host') {
-        // Give Official Host role (you need to add this ID to config later if you want)
-        // For now we just accept them
-
         if (data?.statusMessageId && data?.statusChannelId) {
             const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
             if (statusChannel) {
@@ -411,6 +416,11 @@ async function handleAccept(interaction) {
 }
 
 async function handleDenyButton(interaction) {
+    // Only Founder + Community Manager can deny
+    if (!canReviewApps(interaction.member)) {
+        return interaction.reply({ content: 'Only **Founder** and **Community Manager** can deny applications.', ephemeral: true });
+    }
+
     const parts = interaction.customId.replace('deny_app_', '').split('_');
     const userId = parts[0];
 
@@ -430,6 +440,11 @@ async function handleDenyButton(interaction) {
 }
 
 async function handleDenyModal(interaction) {
+    // Extra safety check
+    if (!canReviewApps(interaction.member)) {
+        return interaction.reply({ content: 'Only **Founder** and **Community Manager** can deny applications.', ephemeral: true });
+    }
+
     const userId = interaction.customId.replace('deny_modal_', '');
     const reason = interaction.fields.getTextInputValue('deny_reason');
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -439,7 +454,6 @@ async function handleDenyModal(interaction) {
     const data = pendingApplications.get(userId);
     const isHost = data?.type === 'host';
 
-    // Update status message
     if (data?.statusMessageId && data?.statusChannelId) {
         const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
         if (statusChannel) {
@@ -451,7 +465,6 @@ async function handleDenyModal(interaction) {
         }
     }
 
-    // Disable buttons
     if (data?.reviewMessageId) {
         const reviewChannel = interaction.guild.channels.cache.get(data.reviewChannelId);
         if (reviewChannel) {
@@ -468,7 +481,6 @@ async function handleDenyModal(interaction) {
 
     pendingApplications.delete(userId);
 
-    // Ping the user
     const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
     if (statusChannel) {
         const typeText = isHost ? '**Host** application' : 'application';
