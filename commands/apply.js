@@ -1,2 +1,9 @@
-// This file is no longer used.
-// Applications are now handled with the "Apply Now" buttons from the panels.
+module.exports = {
+    data: {
+        name: 'unused',
+        toJSON() {
+            return { name: 'unused', description: 'This command is disabled' };
+        }
+    },
+    async execute() {}
+};
