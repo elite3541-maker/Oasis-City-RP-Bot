@@ -1,52 +1,26 @@
 # Oasis City RP Bot
 
-Custom Discord bot for **Oasis City RP** (Wanted Roblox Roleplay).
+## New Features Added
 
-## Features
+### Permissions
+- `/application-panel`, `/host-panel`, `/ticket-panel`, `/send-info` → **Founder only**
+- `/ban`, `/clearwarns` → **Community Manager +**
+- `/warn`, `/kick`, `/timeout`, `/clearwarn` → **Moderator +**
 
-### Welcome System
-- Automatically gives **Applicant** role when someone joins
-- Sends a welcome embed + pings the new member in `#welcome`
+### Safety
+- Cannot kick/ban the server owner
+- Max 3 kicks or bans every 10 minutes (Community Manager and Founder can bypass)
 
-### Member Application System
-- Use `/application-panel` to post a nice panel with an **Apply Now** button
-- Clicking the button opens a form
-- Public status message: `{username}'s application is being looked over`
-- Staff get Accept / Deny buttons
-- On Accept → gives Verified role + pings the user
-- On Deny → asks for reason + pings the user with the reason + 48h wait message
+### Applications
+- 48-hour cooldown after a denial (both Member and Host applications)
+- Public status messages + Accept/Deny buttons
 
-### Host Application System
-- Use `/host-panel` to post a panel with an **Apply Now** button for hosts
-- Only Verified members can apply
-- Same Accept / Deny flow as member applications
-- Public status shows it is a Host application
+### New Commands
+- `/clearwarn` → Remove one specific warning by number
+- `/send-info` → Send Welcome / Rules / Server Info / How to Apply messages
 
-### Ticket System
-- `/ticket-panel` sends a Create Ticket button
-- Pings the Staff role when a ticket is opened
+## Setup Reminder
 
-### Moderation
-- `/warn` `/warnings` `/clearwarns`
-- `/kick` `/ban` `/timeout`
-
-## How to set up the panels
-
-1. Go to `#member-applications` and run:
-   ```
-   /application-panel
-   ```
-2. Go to `#host-applications` and run:
-   ```
-   /host-panel
-   ```
-
-That’s it. Members just click the **Apply Now** buttons.
-
-## Setup
-
-1. `npm install`
-2. Fill in `.env` (TOKEN, CLIENT_ID, GUILD_ID)
-3. Fill in all IDs in `config.js`
-4. `node deploy-commands.js`
-5. `node index.js`
+1. Fill in **all** role IDs in `config.js` (especially `founderRoleId`, `communityManagerRoleId`, `moderatorRoleId`)
+2. Run `node deploy-commands.js` again after pulling the new code
+3. Restart the bot
