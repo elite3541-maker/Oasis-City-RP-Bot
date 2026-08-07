@@ -7,6 +7,11 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction, client, config) {
+        // Founder only
+        if (!interaction.member.roles.cache.has(config.founderRoleId) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: 'Only the **Founder** can use this command.', ephemeral: true });
+        }
+
         const embed = new EmbedBuilder()
             .setColor(config.embedColor)
             .setTitle('📝 Member Application')
