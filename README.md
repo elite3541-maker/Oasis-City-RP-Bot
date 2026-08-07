@@ -1,69 +1,52 @@
 # Oasis City RP Bot
 
-Custom Discord bot for **Oasis City RP** (Wanted Roblox Roleplay server).
+Custom Discord bot for **Oasis City RP** (Wanted Roblox Roleplay).
 
 ## Features
 
 ### Welcome System
 - Automatically gives **Applicant** role when someone joins
-- Sends a welcome embed in `#welcome` and pings the new member
+- Sends a welcome embed + pings the new member in `#welcome`
 
-### Application System
-- `/apply` command opens a form (modal)
-- When submitted:
-  - Public message in `#application-status`: **"{username}'s application is being looked over"**
-  - Full application with **Accept** / **Deny** buttons sent to `#application-review` (staff only)
-- **Accept** button:
-  - Gives **Verified** role
-  - Removes **Applicant** role
-  - Updates status to: **"{username} your application has been accepted"**
-  - Pings the user
-- **Deny** button:
-  - Asks staff for a reason
-  - Updates status to: **"{username} your application has been rejected due to {reason}. Please wait 48 hours then apply again."**
-  - Pings the user
+### Member Application System
+- Use `/application-panel` to post a nice panel with an **Apply Now** button
+- Clicking the button opens a form
+- Public status message: `{username}'s application is being looked over`
+- Staff get Accept / Deny buttons
+- On Accept → gives Verified role + pings the user
+- On Deny → asks for reason + pings the user with the reason + 48h wait message
+
+### Host Application System
+- Use `/host-panel` to post a panel with an **Apply Now** button for hosts
+- Only Verified members can apply
+- Same Accept / Deny flow as member applications
+- Public status shows it is a Host application
 
 ### Ticket System
-- `/ticket-panel` sends a button panel
-- Creates private ticket channels
-- Pings the **Staff** role when a ticket is created
+- `/ticket-panel` sends a Create Ticket button
+- Pings the Staff role when a ticket is opened
 
 ### Moderation
 - `/warn` `/warnings` `/clearwarns`
 - `/kick` `/ban` `/timeout`
-- Full logging
 
-## Setup Instructions
+## How to set up the panels
 
-1. Clone the repository
-2. Run `npm install`
-3. Copy `.env.example` to `.env` and fill in:
-   - `TOKEN`
-   - `CLIENT_ID`
-   - `GUILD_ID`
-4. Open `config.js` and replace all the placeholder IDs with your real:
-   - Channel IDs
-   - Role IDs
-5. Deploy the slash commands:
-   ```bash
-   node deploy-commands.js
+1. Go to `#member-applications` and run:
    ```
-6. Start the bot:
-   ```bash
-   node index.js
+   /application-panel
+   ```
+2. Go to `#host-applications` and run:
+   ```
+   /host-panel
    ```
 
-## Required Bot Permissions
-- Manage Roles
-- Kick Members
-- Ban Members
-- Moderate Members
-- Manage Channels
-- Send Messages
-- Embed Links
-- View Channels
-- Read Message History
+That’s it. Members just click the **Apply Now** buttons.
 
-## Required Privileged Gateway Intents
-- Server Members Intent
-- Message Content Intent
+## Setup
+
+1. `npm install`
+2. Fill in `.env` (TOKEN, CLIENT_ID, GUILD_ID)
+3. Fill in all IDs in `config.js`
+4. `node deploy-commands.js`
+5. `node index.js`
