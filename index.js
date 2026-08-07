@@ -17,7 +17,6 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load commands
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -27,8 +26,8 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
-// Store application message IDs so we can edit them later
-const pendingApplications = new Map(); // userId -> { statusMessageId, reviewMessageId }
+// Store pending applications: userId -> data
+const pendingApplications = new Map();
 
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
@@ -47,7 +46,7 @@ client.on('guildMemberAdd', async (member) => {
         const welcomeEmbed = new EmbedBuilder()
             .setColor(config.embedColor)
             .setTitle('🏙️ Welcome to Oasis City RP')
-            .setDescription(`Welcome ${member}!\n\nThis is the official Oasis City Roleplay community for the Roblox game **Wanted**.\n\nPlease read the following channels carefully before applying:\n\n• #rules\n• #server-info\n• #how-to-apply\n\nOnce you are ready, go to the **Applications** category and submit your application using </apply:0>.\n\nWe're glad you're here.`)
+            .setDescription(`Welcome ${member}!\n\nThis is the official Oasis City Roleplay community for the Roblox game **Wanted**.\n\nPlease read the following channels carefully before applying:\n\n• #rules\n• #server-info\n• #how-to-apply\n\nOnce you are ready, go to the **Applications** category and click **Apply Now**.\n\nWe're glad you're here.`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .setFooter({ text: 'Oasis City RP' })
             .setTimestamp();
@@ -71,10 +70,13 @@ client.on('interactionCreate', async (interaction) => {
             await command.execute(interaction, client, config);
         }
 
-        // Modal submit (Application form)
+        // Modal submits
         if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'application_modal') {
-                await handleApplicationSubmit(interaction);
+            if (interaction.customId === 'member_application_modal') {
+                await handleMemberApplicationSubmit(interaction);
+            }
+            if (interaction.customId === 'host_application_modal') {
+                await handleHostApplicationSubmit(interaction);
             }
             if (interaction.customId.startsWith('deny_modal_')) {
                 await handleDenyModal(interaction);
@@ -83,17 +85,28 @@ client.on('interactionCreate', async (interaction) => {
 
         // Buttons
         if (interaction.isButton()) {
-            if (interaction.customId === 'create_ticket') {
-                await handleCreateTicket(interaction);
+            // Application panels
+            if (interaction.customId === 'open_member_application') {
+                await openMemberApplicationModal(interaction);
             }
-            if (interaction.customId === 'close_ticket') {
-                await handleCloseTicket(interaction);
+            if (interaction.customId === 'open_host_application') {
+                await openHostApplicationModal(interaction);
             }
+
+            // Accept / Deny
             if (interaction.customId.startsWith('accept_app_')) {
                 await handleAccept(interaction);
             }
             if (interaction.customId.startsWith('deny_app_')) {
                 await handleDenyButton(interaction);
+            }
+
+            // Tickets
+            if (interaction.customId === 'create_ticket') {
+                await handleCreateTicket(interaction);
+            }
+            if (interaction.customId === 'close_ticket') {
+                await handleCloseTicket(interaction);
             }
         }
     } catch (error) {
@@ -106,8 +119,54 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ====================== APPLICATION SYSTEM ======================
-async function handleApplicationSubmit(interaction) {
+// ====================== MEMBER APPLICATION ======================
+async function openMemberApplicationModal(interaction) {
+    const modal = new ModalBuilder()
+        .setCustomId('member_application_modal')
+        .setTitle('Oasis City RP - Member Application');
+
+    const robloxInput = new TextInputBuilder()
+        .setCustomId('roblox_username')
+        .setLabel('Roblox Username')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+    const ageInput = new TextInputBuilder()
+        .setCustomId('age')
+        .setLabel('Age (or age range)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+    const experienceInput = new TextInputBuilder()
+        .setCustomId('experience')
+        .setLabel('Previous RP Experience')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+    const whyInput = new TextInputBuilder()
+        .setCustomId('why')
+        .setLabel('Why do you want to join?')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+    const characterInput = new TextInputBuilder()
+        .setCustomId('character')
+        .setLabel('Character idea (short)')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(robloxInput),
+        new ActionRowBuilder().addComponents(ageInput),
+        new ActionRowBuilder().addComponents(experienceInput),
+        new ActionRowBuilder().addComponents(whyInput),
+        new ActionRowBuilder().addComponents(characterInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function handleMemberApplicationSubmit(interaction) {
     const roblox = interaction.fields.getTextInputValue('roblox_username');
     const age = interaction.fields.getTextInputValue('age');
     const experience = interaction.fields.getTextInputValue('experience');
@@ -116,23 +175,22 @@ async function handleApplicationSubmit(interaction) {
 
     const user = interaction.user;
 
-    // 1. Public status message
+    // Public status
     const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
-    let statusMessage;
-
+    let statusMessage = null;
     if (statusChannel) {
         statusMessage = await statusChannel.send(`**${user.username}**'s application is being looked over`);
     }
 
-    // 2. Staff review embed with buttons
+    // Staff review
     const reviewChannel = interaction.guild.channels.cache.get(config.applicationReviewId);
     if (!reviewChannel) {
-        return interaction.reply({ content: 'Application review channel not found. Contact staff.', ephemeral: true });
+        return interaction.reply({ content: 'Application review channel not set up.', ephemeral: true });
     }
 
     const reviewEmbed = new EmbedBuilder()
         .setColor(config.embedColor)
-        .setTitle('📝 New Application')
+        .setTitle('📝 New Member Application')
         .setDescription(`Application from ${user}`)
         .addFields(
             { name: 'Discord', value: `${user.tag} (${user.id})`, inline: true },
@@ -147,11 +205,11 @@ async function handleApplicationSubmit(interaction) {
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(`accept_app_${user.id}`)
+            .setCustomId(`accept_app_${user.id}_member`)
             .setLabel('Accept')
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-            .setCustomId(`deny_app_${user.id}`)
+            .setCustomId(`deny_app_${user.id}_member`)
             .setLabel('Deny')
             .setStyle(ButtonStyle.Danger)
     );
@@ -162,56 +220,186 @@ async function handleApplicationSubmit(interaction) {
         components: [row]
     });
 
-    // Save message IDs so we can edit them later
     pendingApplications.set(user.id, {
+        type: 'member',
         statusMessageId: statusMessage ? statusMessage.id : null,
         reviewMessageId: reviewMessage.id,
         statusChannelId: statusChannel ? statusChannel.id : null,
         reviewChannelId: reviewChannel.id
     });
 
-    await interaction.reply({
-        content: 'Your application has been submitted! Staff will review it soon.',
-        ephemeral: true
-    });
+    await interaction.reply({ content: 'Your application has been submitted! Staff will review it soon.', ephemeral: true });
 }
 
-async function handleAccept(interaction) {
-    const userId = interaction.customId.replace('accept_app_', '');
-    const member = await interaction.guild.members.fetch(userId).catch(() => null);
-
-    if (!member) {
-        return interaction.reply({ content: 'User not found in the server.', ephemeral: true });
+// ====================== HOST APPLICATION ======================
+async function openHostApplicationModal(interaction) {
+    // Check if user is verified
+    const verifiedRole = interaction.guild.roles.cache.get(config.verifiedRoleId);
+    if (verifiedRole && !interaction.member.roles.cache.has(verifiedRole.id)) {
+        return interaction.reply({ content: 'You must be a **Verified** member before applying to become a Host.', ephemeral: true });
     }
 
-    // Give Verified role + remove Applicant
-    const verifiedRole = interaction.guild.roles.cache.get(config.verifiedRoleId);
-    const applicantRole = interaction.guild.roles.cache.get(config.applicantRoleId);
+    const modal = new ModalBuilder()
+        .setCustomId('host_application_modal')
+        .setTitle('Oasis City RP - Host Application');
 
-    if (verifiedRole) await member.roles.add(verifiedRole).catch(() => {});
-    if (applicantRole) await member.roles.remove(applicantRole).catch(() => {});
+    const experienceInput = new TextInputBuilder()
+        .setCustomId('host_experience')
+        .setLabel('Hosting / Leadership Experience')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
 
-    // Update public status
+    const whyInput = new TextInputBuilder()
+        .setCustomId('host_why')
+        .setLabel('Why do you want to host?')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+    const availabilityInput = new TextInputBuilder()
+        .setCustomId('availability')
+        .setLabel('Availability / Timezone')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+    const ideasInput = new TextInputBuilder()
+        .setCustomId('session_ideas')
+        .setLabel('What kind of sessions do you want to host?')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(experienceInput),
+        new ActionRowBuilder().addComponents(whyInput),
+        new ActionRowBuilder().addComponents(availabilityInput),
+        new ActionRowBuilder().addComponents(ideasInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function handleHostApplicationSubmit(interaction) {
+    const experience = interaction.fields.getTextInputValue('host_experience');
+    const why = interaction.fields.getTextInputValue('host_why');
+    const availability = interaction.fields.getTextInputValue('availability');
+    const ideas = interaction.fields.getTextInputValue('session_ideas');
+
+    const user = interaction.user;
+
+    // Public status
+    const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
+    let statusMessage = null;
+    if (statusChannel) {
+        statusMessage = await statusChannel.send(`**${user.username}**'s **Host** application is being looked over`);
+    }
+
+    // Staff review
+    const reviewChannel = interaction.guild.channels.cache.get(config.applicationReviewId);
+    if (!reviewChannel) {
+        return interaction.reply({ content: 'Application review channel not set up.', ephemeral: true });
+    }
+
+    const reviewEmbed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('🎤 New Host Application')
+        .setDescription(`Host application from ${user}`)
+        .addFields(
+            { name: 'Discord', value: `${user.tag} (${user.id})`, inline: true },
+            { name: 'Availability / Timezone', value: availability, inline: true },
+            { name: 'Hosting Experience', value: experience },
+            { name: 'Why do you want to host?', value: why },
+            { name: 'Session Ideas', value: ideas }
+        )
+        .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`accept_app_${user.id}_host`)
+            .setLabel('Accept as Host')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(`deny_app_${user.id}_host`)
+            .setLabel('Deny')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    const reviewMessage = await reviewChannel.send({
+        content: `<@&${config.staffRoleId}>`,
+        embeds: [reviewEmbed],
+        components: [row]
+    });
+
+    pendingApplications.set(user.id, {
+        type: 'host',
+        statusMessageId: statusMessage ? statusMessage.id : null,
+        reviewMessageId: reviewMessage.id,
+        statusChannelId: statusChannel ? statusChannel.id : null,
+        reviewChannelId: reviewChannel.id
+    });
+
+    await interaction.reply({ content: 'Your Host application has been submitted! Staff will review it soon.', ephemeral: true });
+}
+
+// ====================== ACCEPT / DENY ======================
+async function handleAccept(interaction) {
+    const parts = interaction.customId.replace('accept_app_', '').split('_');
+    const userId = parts[0];
+    const type = parts[1]; // member or host
+
+    const member = await interaction.guild.members.fetch(userId).catch(() => null);
+    if (!member) return interaction.reply({ content: 'User not found.', ephemeral: true });
+
     const data = pendingApplications.get(userId);
-    if (data && data.statusMessageId && data.statusChannelId) {
-        const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
-        if (statusChannel) {
-            const statusMsg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
-            if (statusMsg) {
-                await statusMsg.edit(`**${member.user.username}** your application has been accepted`);
+
+    if (type === 'member') {
+        const verifiedRole = interaction.guild.roles.cache.get(config.verifiedRoleId);
+        const applicantRole = interaction.guild.roles.cache.get(config.applicantRoleId);
+
+        if (verifiedRole) await member.roles.add(verifiedRole).catch(() => {});
+        if (applicantRole) await member.roles.remove(applicantRole).catch(() => {});
+
+        // Update status
+        if (data?.statusMessageId && data?.statusChannelId) {
+            const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
+            if (statusChannel) {
+                const msg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
+                if (msg) await msg.edit(`**${member.user.username}** your application has been accepted`);
             }
+        }
+
+        const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
+        if (statusChannel) {
+            await statusChannel.send(`${member} your application has been **accepted**! Welcome to Oasis City RP.`);
         }
     }
 
-    // Disable buttons on review message
-    if (data && data.reviewMessageId) {
+    if (type === 'host') {
+        // Give Official Host role (you need to add this ID to config later if you want)
+        // For now we just accept them
+
+        if (data?.statusMessageId && data?.statusChannelId) {
+            const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
+            if (statusChannel) {
+                const msg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
+                if (msg) await msg.edit(`**${member.user.username}** your **Host** application has been accepted`);
+            }
+        }
+
+        const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
+        if (statusChannel) {
+            await statusChannel.send(`${member} your **Host** application has been **accepted**! You can now host RP sessions.`);
+        }
+    }
+
+    // Disable buttons
+    if (data?.reviewMessageId) {
         const reviewChannel = interaction.guild.channels.cache.get(data.reviewChannelId);
         if (reviewChannel) {
             const reviewMsg = await reviewChannel.messages.fetch(data.reviewMessageId).catch(() => null);
             if (reviewMsg) {
                 const disabledRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('disabled_accept').setLabel('Accepted').setStyle(ButtonStyle.Success).setDisabled(true),
-                    new ButtonBuilder().setCustomId('disabled_deny').setLabel('Deny').setStyle(ButtonStyle.Danger).setDisabled(true)
+                    new ButtonBuilder().setCustomId('disabled').setLabel('Accepted').setStyle(ButtonStyle.Success).setDisabled(true),
+                    new ButtonBuilder().setCustomId('disabled2').setLabel('Deny').setStyle(ButtonStyle.Danger).setDisabled(true)
                 );
                 await reviewMsg.edit({ components: [disabledRow] });
             }
@@ -219,18 +407,12 @@ async function handleAccept(interaction) {
     }
 
     pendingApplications.delete(userId);
-
-    // Ping the user in the status channel
-    const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
-    if (statusChannel) {
-        await statusChannel.send(`${member} your application has been **accepted**! Welcome to Oasis City RP.`);
-    }
-
-    await interaction.reply({ content: `Accepted ${member.user.tag}`, ephemeral: true });
+    await interaction.reply({ content: `Accepted ${member.user.tag} (${type})`, ephemeral: true });
 }
 
 async function handleDenyButton(interaction) {
-    const userId = interaction.customId.replace('deny_app_', '');
+    const parts = interaction.customId.replace('deny_app_', '').split('_');
+    const userId = parts[0];
 
     const modal = new ModalBuilder()
         .setCustomId(`deny_modal_${userId}`)
@@ -252,31 +434,32 @@ async function handleDenyModal(interaction) {
     const reason = interaction.fields.getTextInputValue('deny_reason');
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
 
-    if (!member) {
-        return interaction.reply({ content: 'User not found.', ephemeral: true });
-    }
+    if (!member) return interaction.reply({ content: 'User not found.', ephemeral: true });
 
-    // Update public status
     const data = pendingApplications.get(userId);
-    if (data && data.statusMessageId && data.statusChannelId) {
+    const isHost = data?.type === 'host';
+
+    // Update status message
+    if (data?.statusMessageId && data?.statusChannelId) {
         const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
         if (statusChannel) {
-            const statusMsg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
-            if (statusMsg) {
-                await statusMsg.edit(`**${member.user.username}** your application has been rejected due to **${reason}**. Please wait 48 hours then apply again.`);
+            const msg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
+            if (msg) {
+                const typeText = isHost ? '**Host** application' : 'application';
+                await msg.edit(`**${member.user.username}** your ${typeText} has been rejected due to **${reason}**. Please wait 48 hours then apply again.`);
             }
         }
     }
 
     // Disable buttons
-    if (data && data.reviewMessageId) {
+    if (data?.reviewMessageId) {
         const reviewChannel = interaction.guild.channels.cache.get(data.reviewChannelId);
         if (reviewChannel) {
             const reviewMsg = await reviewChannel.messages.fetch(data.reviewMessageId).catch(() => null);
             if (reviewMsg) {
                 const disabledRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('disabled_accept').setLabel('Accept').setStyle(ButtonStyle.Success).setDisabled(true),
-                    new ButtonBuilder().setCustomId('disabled_deny').setLabel('Denied').setStyle(ButtonStyle.Danger).setDisabled(true)
+                    new ButtonBuilder().setCustomId('disabled').setLabel('Accept').setStyle(ButtonStyle.Success).setDisabled(true),
+                    new ButtonBuilder().setCustomId('disabled2').setLabel('Denied').setStyle(ButtonStyle.Danger).setDisabled(true)
                 );
                 await reviewMsg.edit({ components: [disabledRow] });
             }
@@ -288,7 +471,8 @@ async function handleDenyModal(interaction) {
     // Ping the user
     const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
     if (statusChannel) {
-        await statusChannel.send(`${member} your application has been **rejected** due to: **${reason}**\nPlease wait **48 hours** before applying again.`);
+        const typeText = isHost ? '**Host** application' : 'application';
+        await statusChannel.send(`${member} your ${typeText} has been **rejected** due to: **${reason}**\nPlease wait **48 hours** before applying again.`);
     }
 
     await interaction.reply({ content: `Denied ${member.user.tag}`, ephemeral: true });
