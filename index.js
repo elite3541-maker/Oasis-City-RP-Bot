@@ -26,7 +26,6 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
-// Store pending applications: userId -> data
 const pendingApplications = new Map();
 
 client.once('ready', () => {
@@ -63,14 +62,12 @@ client.on('guildMemberAdd', async (member) => {
 // ====================== INTERACTION HANDLER ======================
 client.on('interactionCreate', async (interaction) => {
     try {
-        // Slash commands
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
             await command.execute(interaction, client, config);
         }
 
-        // Modal submits
         if (interaction.isModalSubmit()) {
             if (interaction.customId === 'member_application_modal') {
                 await handleMemberApplicationSubmit(interaction);
@@ -83,25 +80,19 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // Buttons
         if (interaction.isButton()) {
-            // Application panels
             if (interaction.customId === 'open_member_application') {
                 await openMemberApplicationModal(interaction);
             }
             if (interaction.customId === 'open_host_application') {
                 await openHostApplicationModal(interaction);
             }
-
-            // Accept / Deny
             if (interaction.customId.startsWith('accept_app_')) {
                 await handleAccept(interaction);
             }
             if (interaction.customId.startsWith('deny_app_')) {
                 await handleDenyButton(interaction);
             }
-
-            // Tickets
             if (interaction.customId === 'create_ticket') {
                 await handleCreateTicket(interaction);
             }
@@ -119,7 +110,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ====================== HELPER: Check if user can review apps ======================
+// ====================== HELPER ======================
 function canReviewApps(member) {
     return member.roles.cache.has(config.founderRoleId) ||
            member.roles.cache.has(config.communityManagerRoleId) ||
@@ -182,14 +173,12 @@ async function handleMemberApplicationSubmit(interaction) {
 
     const user = interaction.user;
 
-    // Public status
     const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
     let statusMessage = null;
     if (statusChannel) {
         statusMessage = await statusChannel.send(`**${user.username}**'s application is being looked over`);
     }
 
-    // Staff review
     const reviewChannel = interaction.guild.channels.cache.get(config.applicationReviewId);
     if (!reviewChannel) {
         return interaction.reply({ content: 'Application review channel not set up.', ephemeral: true });
@@ -346,19 +335,27 @@ async function handleHostApplicationSubmit(interaction) {
 
 // ====================== ACCEPT / DENY ======================
 async function handleAccept(interaction) {
-    // Only Founder + Community Manager can accept
     if (!canReviewApps(interaction.member)) {
         return interaction.reply({ content: 'Only **Founder** and **Community Manager** can accept applications.', ephemeral: true });
     }
 
     const parts = interaction.customId.replace('accept_app_', '').split('_');
     const userId = parts[0];
-    const type = parts[1]; // member or host
+    const type = parts[1];
 
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
     if (!member) return interaction.reply({ content: 'User not found.', ephemeral: true });
 
     const data = pendingApplications.get(userId);
+
+    // Delete the old "being looked over" message
+    if (data?.statusMessageId && data?.statusChannelId) {
+        const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
+        if (statusChannel) {
+            const oldMsg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
+            if (oldMsg) await oldMsg.delete().catch(() => {});
+        }
+    }
 
     if (type === 'member') {
         const verifiedRole = interaction.guild.roles.cache.get(config.verifiedRoleId);
@@ -367,14 +364,6 @@ async function handleAccept(interaction) {
         if (verifiedRole) await member.roles.add(verifiedRole).catch(() => {});
         if (applicantRole) await member.roles.remove(applicantRole).catch(() => {});
 
-        if (data?.statusMessageId && data?.statusChannelId) {
-            const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
-            if (statusChannel) {
-                const msg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
-                if (msg) await msg.edit(`**${member.user.username}** your application has been accepted`);
-            }
-        }
-
         const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
         if (statusChannel) {
             await statusChannel.send(`${member} your application has been **accepted**! Welcome to Oasis City RP.`);
@@ -382,12 +371,9 @@ async function handleAccept(interaction) {
     }
 
     if (type === 'host') {
-        if (data?.statusMessageId && data?.statusChannelId) {
-            const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
-            if (statusChannel) {
-                const msg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
-                if (msg) await msg.edit(`**${member.user.username}** your **Host** application has been accepted`);
-            }
+        const hostRole = interaction.guild.roles.cache.get(config.officialHostRoleId);
+        if (hostRole) {
+            await member.roles.add(hostRole).catch(() => {});
         }
 
         const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
@@ -396,7 +382,7 @@ async function handleAccept(interaction) {
         }
     }
 
-    // Disable buttons
+    // Disable buttons on review message
     if (data?.reviewMessageId) {
         const reviewChannel = interaction.guild.channels.cache.get(data.reviewChannelId);
         if (reviewChannel) {
@@ -416,7 +402,6 @@ async function handleAccept(interaction) {
 }
 
 async function handleDenyButton(interaction) {
-    // Only Founder + Community Manager can deny
     if (!canReviewApps(interaction.member)) {
         return interaction.reply({ content: 'Only **Founder** and **Community Manager** can deny applications.', ephemeral: true });
     }
@@ -440,7 +425,6 @@ async function handleDenyButton(interaction) {
 }
 
 async function handleDenyModal(interaction) {
-    // Extra safety check
     if (!canReviewApps(interaction.member)) {
         return interaction.reply({ content: 'Only **Founder** and **Community Manager** can deny applications.', ephemeral: true });
     }
@@ -454,17 +438,16 @@ async function handleDenyModal(interaction) {
     const data = pendingApplications.get(userId);
     const isHost = data?.type === 'host';
 
+    // Delete the old "being looked over" message
     if (data?.statusMessageId && data?.statusChannelId) {
         const statusChannel = interaction.guild.channels.cache.get(data.statusChannelId);
         if (statusChannel) {
-            const msg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
-            if (msg) {
-                const typeText = isHost ? '**Host** application' : 'application';
-                await msg.edit(`**${member.user.username}** your ${typeText} has been rejected due to **${reason}**. Please wait 48 hours then apply again.`);
-            }
+            const oldMsg = await statusChannel.messages.fetch(data.statusMessageId).catch(() => null);
+            if (oldMsg) await oldMsg.delete().catch(() => {});
         }
     }
 
+    // Disable buttons
     if (data?.reviewMessageId) {
         const reviewChannel = interaction.guild.channels.cache.get(data.reviewChannelId);
         if (reviewChannel) {
@@ -481,6 +464,7 @@ async function handleDenyModal(interaction) {
 
     pendingApplications.delete(userId);
 
+    // Send only one clean message with the ping
     const statusChannel = interaction.guild.channels.cache.get(config.applicationStatusId);
     if (statusChannel) {
         const typeText = isHost ? '**Host** application' : 'application';
